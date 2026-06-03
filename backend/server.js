@@ -379,5 +379,5 @@ async function startBotPolling() {
 app.listen(PORT, () => {
     console.log(`🚀 QRKulka API on port ${PORT}`);
     console.log(`   CORS: ${FRONTEND_URL}`);
-    startBotPolling();
+    startBotPolling().catch(e => console.error('[Bot] Fatal error:', e));
 });
