@@ -16,8 +16,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet"/>
     <link rel="stylesheet" href="css/base.css"/>
     <link rel="stylesheet" href="css/screens.css"/>
-
-    <!-- API Config -->
     <script>window.QRKULKA_API = 'http://161.97.99.137';</script>
 </head>
 <body>
@@ -28,7 +26,7 @@
     <div class="auth-content">
         <div class="app-logo">
             <div class="logo-mark">
-                <img class="logo-mark" src="icons/QRKulka-512.png" alt="QR Kulka" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"/>
+                <img src="icons/QRKulka-512.png" alt="QR Kulka" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"/>
                 <div style="display:none;width:120px;height:120px;background:var(--grad-purple);border-radius:32px;display:flex;align-items:center;justify-content:center">
                     <svg viewBox="0 0 48 48" fill="none" width="60" height="60">
                         <rect x="4" y="4" width="16" height="16" rx="3" fill="white" opacity=".9"/>
@@ -47,22 +45,12 @@
             <span class="badge">Click</span><span class="badge">Uzumbank</span>
             <span class="badge">Payme</span><span class="badge">Go QR</span>
         </div>
-        <script async
-                src="https://telegram.org/js/telegram-widget.js?22"
-                data-telegram-login="QRKulka_bot"
-                data-size="large"
-                data-radius="12"
-                data-onauth="window.onTelegramAuth(user)"
-                data-request-access="write">
-        </script>
-        <div style="padding-top:16px">
-            <button class="btn-tg" id="btnTgLogin">
-                <svg class="tg-svg" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248l-2.018 9.51c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.881.711z"/>
-                </svg>
-                Или войди как гость
-            </button>
-        </div>
+        <button class="btn-tg" id="btnTgLogin">
+            <svg class="tg-svg" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248l-2.018 9.51c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.881.711z"/>
+            </svg>
+            Открыть в Telegram
+        </button>
         <div class="auth-note">Быстро · Безопасно · Офлайн</div>
     </div>
 </div>
@@ -372,7 +360,6 @@
 
 <!-- Service Worker + PWA Install -->
 <script>
-    // Register Service Worker
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('/sw.js', { scope: '/' })
@@ -381,7 +368,6 @@
         });
     }
 
-    // PWA Install prompt
     let _installPrompt = null;
     window.addEventListener('beforeinstallprompt', e => {
         e.preventDefault();
