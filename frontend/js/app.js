@@ -268,16 +268,36 @@ async function boot() {
 }
 
 /* Welcome → PIN setup */
+// Telegram login handler
+window.onTelegramAuth = async function(tgUser) {
+    loader(true);
+    try {
+        const user = await API.loginTelegram(tgUser);
+        State.user = user;
+        await DB.saveUser(user);
+        $('setupAvatar').textContent = user.emoji;
+        State.pin = '';
+        buildKeypad('setupKeypad', onSetupKey, onSetupDel);
+        loader(false);
+        go('pin-setup', true);
+    } catch(e) {
+        loader(false);
+        toast('Ошибка входа: ' + e.message);
+        console.error(e);
+    }
+};
+
+// Fallback button for demo
 $('btnTgLogin').addEventListener('click', async()=>{
-  loader(true); await wait(900); loader(false);
-  const {emoji,code} = genUser();
-  const user = {emoji,code,createdAt:Date.now()};
-  State.user = user;
-  await DB.saveUser(user);
-  $('setupAvatar').textContent = emoji;
-  State.pin = '';
-  buildKeypad('setupKeypad', onSetupKey, onSetupDel);
-  go('pin-setup',true);
+    loader(true); await wait(900); loader(false);
+    const {emoji,code} = genUser();
+    const user = {emoji,code,createdAt:Date.now()};
+    State.user = user;
+    await DB.saveUser(user);
+    $('setupAvatar').textContent = emoji;
+    State.pin = '';
+    buildKeypad('setupKeypad', onSetupKey, onSetupDel);
+    go('pin-setup',true);
 });
 
 function onSetupKey(k) {
