@@ -1,0 +1,144 @@
+/* ══════════════════════════════════════
+   BASE.CSS
+══════════════════════════════════════ */
+:root {
+  --bg:     #080810;
+  --bg2:    #0f0f1a;
+  --surface: rgba(255,255,255,0.05);
+  --surf2:   rgba(255,255,255,0.08);
+  --surf3:   rgba(255,255,255,0.13);
+  --border:  rgba(255,255,255,0.08);
+  --border2: rgba(255,255,255,0.15);
+  --text:    #ffffff;
+  --text2:   rgba(255,255,255,0.6);
+  --text3:   rgba(255,255,255,0.35);
+  --accent:  #4f46e5;
+  --accent2: #7c3aed;
+  --glow:    rgba(79,70,229,0.45);
+  --grad-purple: linear-gradient(135deg,#4f46e5,#7c3aed);
+  --grad-cyan:   linear-gradient(135deg,#06b6d4,#0ea5e9);
+  --grad-green:  linear-gradient(135deg,#059669,#10b981);
+  --grad-red:    linear-gradient(135deg,#dc2626,#f97316);
+  --grad-pink:   linear-gradient(135deg,#ec4899,#f43f5e);
+  --grad-amber:  linear-gradient(135deg,#ca8a04,#f59e0b);
+  --grad-blue:   linear-gradient(135deg,#2563eb,#3b82f6);
+  --grad-teal:   linear-gradient(135deg,#0f766e,#14b8a6);
+  --grad-rose:   linear-gradient(135deg,#e11d48,#fb7185);
+  --grad-slate:  linear-gradient(135deg,#334155,#64748b);
+  --r-sm: 10px; --r-md: 14px; --r-lg: 20px; --r-xl: 24px;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+
+*,*::before,*::after { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html, body { width:100%; height:100%; overflow:hidden; background:var(--bg); }
+body {
+  font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;
+  color:var(--text);
+  position:fixed; inset:0;
+  overscroll-behavior:none;
+}
+input,button,select,textarea { font-family:inherit; }
+button { cursor:pointer; border:none; background:none; color:inherit; }
+.syne { font-family:'Syne',sans-serif; }
+
+* {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+img {
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+/* ── THE SCREEN SYSTEM ──
+   ONE rule: screens are display:none by default.
+   Only .screen-active shows. Simple. No conflicts. */
+.screen {
+  display: none;
+  position: absolute;
+  inset: 0;
+  flex-direction: column;
+  background: var(--bg);
+  overflow: hidden;
+}
+.screen-active {
+  display: flex !important;
+}
+
+/* Blobs */
+.blob { position:absolute; border-radius:50%; filter:blur(100px); pointer-events:none; }
+.b1 { width:320px;height:320px;background:#4f46e5;opacity:.22;top:-100px;left:-80px; }
+.b2 { width:260px;height:260px;background:#7c3aed;opacity:.18;top:160px;right:-110px; }
+.b3 { width:300px;height:300px;background:#06b6d4;opacity:.12;bottom:80px;left:-90px; }
+.app-bg, .auth-bg { position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0; }
+
+/* Slide-in animation for app screens */
+@keyframes slideInRight {
+  from { transform:translateX(100%); opacity:0; }
+  to   { transform:translateX(0);    opacity:1; }
+}
+.screen-slide { animation: slideInRight .3s cubic-bezier(0.4,0,0.2,1) both; }
+
+/* Other animations */
+@keyframes scanAnim {
+  0%   { top:2px; opacity:0; }
+  8%   { opacity:1; }
+  92%  { opacity:1; }
+  100% { top:calc(100% - 2px); opacity:0; }
+}
+@keyframes popIn {
+  0%  { transform:scale(.5);opacity:0; }
+  70% { transform:scale(1.06); }
+  100%{ transform:scale(1);opacity:1; }
+}
+@keyframes shake {
+  0%,100%{ transform:translateX(0); }
+  20%    { transform:translateX(-10px); }
+  40%    { transform:translateX(10px); }
+  60%    { transform:translateX(-7px); }
+  80%    { transform:translateX(7px); }
+}
+@keyframes fadeUp {
+  from { opacity:0;transform:translateY(20px); }
+  to   { opacity:1;transform:translateY(0); }
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+@keyframes dotPop {
+  0%  { transform:scale(1); }
+  50% { transform:scale(1.4); }
+  100%{ transform:scale(1); }
+}
+
+/* Toast */
+.toast {
+  position:fixed; bottom:100px; left:50%; transform:translateX(-50%);
+  background:rgba(20,20,40,0.95);
+  backdrop-filter:blur(20px);
+  border:1px solid rgba(255,255,255,0.12);
+  border-radius:40px; padding:11px 22px;
+  font-size:14px; font-weight:500;
+  white-space:nowrap; z-index:9999;
+  animation:fadeUp .3s ease both;
+  display:none;
+}
+.toast.show { display:block; }
+
+/* Loader */
+.loader {
+  position:fixed; inset:0;
+  background:rgba(8,8,16,0.8);
+  backdrop-filter:blur(8px);
+  display:none; align-items:center; justify-content:center;
+  z-index:8888;
+}
+.loader.show { display:flex; }
+.loader-spin {
+  width:36px;height:36px;
+  border:2.5px solid rgba(255,255,255,0.15);
+  border-top-color:#4f46e5;
+  border-radius:50%;
+  animation:spin .8s linear infinite;
+}
