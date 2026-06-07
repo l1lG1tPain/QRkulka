@@ -272,6 +272,9 @@ async function boot() {
             createdAt: Date.now()
         };
         await DB.saveUser(State.user);
+        $('setupAvatar').textContent = State.user.emoji;
+        State.pin = '';
+        buildKeypad('setupKeypad', onSetupKey, onSetupDel);
         await loadCards();
         renderHome();
         renderProfile();
@@ -293,7 +296,7 @@ async function boot() {
 /* Welcome → Telegram bot */
 $('btnTgLogin').addEventListener('click', () => {
     // Open bot with /start command
-    const BOT_USERNAME = 'QRKulka_bot'; // замени на свой username
+    const BOT_USERNAME = 'QRKulkaBot'; // замени на свой username
     const botLink = `https://t.me/${BOT_USERNAME}?start=auth`;
     window.open(botLink, '_blank');
 });
