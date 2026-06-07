@@ -263,6 +263,11 @@ async function boot() {
     const emojiFromBot = params.get('emoji');
     const codeFromBot = params.get('code');
 
+    // Clear URL params immediately after reading them
+    if (tokenFromBot) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
     if (tokenFromBot) {
         // Already authenticated from bot
         localStorage.setItem('qrk_jwt', tokenFromBot);
