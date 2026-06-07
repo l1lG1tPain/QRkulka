@@ -137,7 +137,7 @@ app.set('trust proxy', 1);
 
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({
-    origin: [FRONTEND_URL, 'http://localhost:5173', 'http://localhost:3000', 'https://seventh-regulated-prospects-deeper.trycloudflare.com'],
+    origin: [FRONTEND_URL, 'http://localhost:5173', 'http://localhost:3000', 'https://panels-spam-fall-utilities.trycloudflare.com'],
     methods: ['GET','POST','PUT','DELETE','OPTIONS'],
     allowedHeaders: ['Content-Type','Authorization'],
     credentials: true,
