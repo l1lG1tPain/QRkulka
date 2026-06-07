@@ -296,7 +296,7 @@ async function boot() {
 /* Welcome → Telegram bot */
 $('btnTgLogin').addEventListener('click', () => {
     // Open bot with /start command
-    const BOT_USERNAME = 'QRKulka_bot'; // замени на свой username
+    const BOT_USERNAME = 'QRKulkaBot'; // замени на свой username
     const botLink = `https://t.me/${BOT_USERNAME}?start=auth`;
     window.open(botLink, '_blank');
 });
@@ -372,6 +372,31 @@ async function enterApp() {
 
 /* ─── CARDS CRUD ─── */
 async function loadCards() {
+    // Sync from server first if online
+    if(API.isOnline() && API.hasToken()) {
+        try {
+            console.log('[Sync] Pulling cards from server...');
+            const serverCards = await API.pullCards();
+            if(serverCards && serverCards.length > 0) {
+                // Merge server cards with local
+                for(const card of serverCards) {
+                    const exists = await DB.getAllCards().then(cards => cards.find(c => c.id === card.id));
+                    if(!exists) {
+                        await DB.saveCard({
+                            id: card.id,
+                            createdAt: card.created_at,
+                            encryptedData: card.encrypted_data
+                        });
+                    }
+                }
+                console.log('[Sync] Pulled', serverCards.length, 'cards from server');
+            }
+        } catch(e) {
+            console.warn('[Sync] Pull failed:', e.message);
+        }
+    }
+
+    // Load from local DB
     const rows = await DB.getAllCards();
     const out=[];
     for(const r of rows){
@@ -390,7 +415,14 @@ async function addCard(data) {
 
     // Sync to cloud if online
     if(API.isOnline()) {
-        API.pushCards([{id,createdAt,encrypted_data:enc}]).catch(e=>console.warn('Sync failed:',e));
+        console.log('[Sync] Pushing card:', id);
+        API.pushCards([{id,createdAt,encrypted_data:enc}]).then(()=>{
+            console.log('[Sync] Card pushed OK');
+        }).catch(e=>{
+            console.error('[Sync] Push failed:', e.message);
+        });
+    } else {
+        console.log('[Sync] Offline, card saved locally only');
     }
 
     return full;
