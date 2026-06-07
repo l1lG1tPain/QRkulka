@@ -39,48 +39,30 @@ const Scanner = (() => {
    * @param {Function} onError    - optional, called on persistent errors
    */
   async function start(elementId, onSuccess, onError) {
-    if (_running) await stop();
+      if (_running) await stop();
 
-    _instance = new Html5Qrcode(elementId, { verbose: false });
+      _instance = new Html5Qrcode(elementId, { verbose: false });
 
-    // Prefer back camera
-    const cameraConstraint = {
-      facingMode: { ideal: 'environment' },
-    };
+      try {
+          // Запрос разрешения на камеру
+          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+          stream.getTracks().forEach(track => track.stop());
 
-    try {
-      await _instance.start(
-        cameraConstraint,
-        CONFIG,
-        (text, result) => {
-          const fmt = result?.result?.format?.formatName || 'QR_CODE';
-          onSuccess(text, fmt);
-        },
-        (err) => {
-          // Suppress "No MultiFormat Readers" noise
-          if (onError && !String(err).includes('No MultiFormat')) {
-            onError(err);
-          }
-        }
-      );
-      _running = true;
-    } catch (err) {
-      // Fall back to any camera if environment not available
-      const cameras = await Html5Qrcode.getCameras();
-      if (!cameras || cameras.length === 0) {
-        throw new Error('Камера недоступна. Проверьте разрешения.');
+          // Теперь запустим сканер
+          await _instance.start(
+              { facingMode: { ideal: 'environment' } },
+              CONFIG,
+              (text, result) => {
+                  const fmt = result?.result?.format?.formatName || 'QR_CODE';
+                  onSuccess(text, fmt);
+              },
+              () => {}
+          );
+          _running = true;
+      } catch (err) {
+          if (onError) onError(err.message || 'Доступ к камере запрещен');
+          throw err;
       }
-      const cameraId = cameras[cameras.length - 1].id; // pick last (usually back)
-      await _instance.start(
-        cameraId, CONFIG,
-        (text, result) => {
-          const fmt = result?.result?.format?.formatName || 'QR_CODE';
-          onSuccess(text, fmt);
-        },
-        () => {}
-      );
-      _running = true;
-    }
   }
 
   /**
