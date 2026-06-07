@@ -1,11 +1,13 @@
 /* ══════════════════════════════════════
-   APP.JS v3 — clean router, no conflicts
+   APP.JS v4 — master_key architecture
+   PIN (local) + masterKey (server) sync
 ══════════════════════════════════════ */
 'use strict';
 
 /* ─── STATE ─── */
 const State = {
-    key: null, mode: 'aes',
+    masterKey: null,        // Shared encryption key from server
+    pinKey: null,           // Local PIN encryption key
     user: null, cards: [],
     editId: null, pin: '',
     color: 'purple', type: 'QR',
@@ -21,40 +23,25 @@ function uid() { return Date.now().toString(36) + Math.random().toString(36).sli
 function genUser() {
     const emojis = [
         '🍋','🦈','🐬','🐳','🐋','🐙','🦭','🐢','🐠','🪼','🦑','🦀','🌊',
-
         '📱','📲','💻','⌚','📷','📸','🖥️','🤖','⚙️','🔋','💾',
         '📡','🛰️','🔌','🧠','🛜','🌐','🔗','💡','🔍',
-
         '💳','💰','💵','💶','💷','🪙','🏦','📈','📊','💸',
         '🏷️','🎟️','🎫','🪪','📇','🗂️',
-
         '🔐','🔒','🛡️','🔑','🗝️',
-
         '🛒','🛍️','🏪','📦','🚕',
         '☕','🍔','🍟','🍕','🍣','🥤','🧃',
-
         '🎁','🎉','✨','🔖',
-
         '🚀','⚡','🔥','🎯','🏆','⭐','🌟','💎','👑',
-
         '🌙','☀️','🌈','🍀','🌸','🌺','🌻','🦋',
-
         '🦊','🐺','🦁','🐯','🐻','🐼','🐧',
         '🦅','🦉','🐨','🦝','🦄','🐉',
-
         '😎','🤓','🥷','🧙‍♂️','🧞‍♂️','🎩',
-
         '🎮','🎲','🎸','🎧','🎭','🎪','🃏',
-
         '🪐','🌌','☄️','🌠','🛸',
-
         '📚','✈️','🚗','🏍️','🚁','⛵','🏝️','🗺️','🧭',
-
         '🧩','🎬','🍿','🎡','🏟️','🎢',
-
         '⚽','🏀','🎾','🏐','🏓','🏸',
         '🛹','🚴','🏄','⛷️','🏂','🧗','🤸','🧘',
-
         '🦜','🦩'
     ];
     const chars  = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -67,6 +54,7 @@ function genUser() {
 function fmtDate(ts) {
     return new Date(ts).toLocaleDateString('ru-RU',{day:'2-digit',month:'long',year:'numeric'});
 }
+
 function ago(ts) {
     const m=Math.floor((Date.now()-ts)/60000);
     if(m<1) return 'только что';
@@ -84,23 +72,13 @@ const GRAD = {
     red:   'linear-gradient(135deg,#dc2626,#f97316)',
     pink:  'linear-gradient(135deg,#ec4899,#f43f5e)',
     amber: 'linear-gradient(135deg,#ca8a04,#f59e0b)',
-    blue:
-        'linear-gradient(135deg,#2563eb,#3b82f6)',
-
-    teal:
-        'linear-gradient(135deg,#0f766e,#14b8a6)',
-
-    rose:
-        'linear-gradient(135deg,#e11d48,#fb7185)',
-
-    slate:
-        'linear-gradient(135deg,#334155,#64748b)'
+    blue:  'linear-gradient(135deg,#2563eb,#3b82f6)',
+    teal:  'linear-gradient(135deg,#0f766e,#14b8a6)',
+    rose:  'linear-gradient(135deg,#e11d48,#fb7185)',
+    slate: 'linear-gradient(135deg,#334155,#64748b)'
 };
 
 const BRANDS = [
-    // =====================
-    // 🇺🇿 Uzbekistan
-    // =====================
     { keys: ['click'], emoji: '💳' },
     { keys: ['payme'], emoji: '💚' },
     { keys: ['uzum', 'uzumbank', 'uzum bank'], emoji: '🏦' },
@@ -109,71 +87,43 @@ const BRANDS = [
     { keys: ['uzcard'], emoji: '💠' },
     { keys: ['paynet'], emoji: '💳' },
     { keys: ['oson'], emoji: '⚡' },
-
-    // =====================
-    // 🇰🇿 Kazakhstan
-    // =====================
     { keys: ['kaspi', 'kaspi.kz', 'kaspi bank'], emoji: '🔴' },
     { keys: ['halyk', 'halyk bank'], emoji: '🏦' },
     { keys: ['forte'], emoji: '🟣' },
     { keys: ['homebank'], emoji: '🏦' },
     { keys: ['jysan'], emoji: '🟠' },
     { keys: ['qiwi'], emoji: '🥝' },
-
-    // =====================
-    // 🇷🇺 Russia
-    // =====================
     { keys: ['tinkoff', 't-bank', 'tbank'], emoji: '🟡' },
     { keys: ['sber', 'sberbank', 'sberpay'], emoji: '🟢' },
     { keys: ['alfa', 'alfabank'], emoji: '🔴' },
     { keys: ['yoomoney', 'юмани'], emoji: '💜' },
     { keys: ['mir', 'mirpay'], emoji: '💳' },
-
-    // =====================
-    // 🛒 Stores
-    // =====================
     { keys: ['korzinka', 'korzinka.uz'], emoji: '🛒' },
     { keys: ['makro'], emoji: '🛒' },
     { keys: ['havas'], emoji: '🛒' },
-
     { keys: ['magnum'], emoji: '🛒' },
     { keys: ['small'], emoji: '🛒' },
-
     { keys: ['perekrestok'], emoji: '🛒' },
     { keys: ['pyaterochka', 'пятерочка'], emoji: '🛒' },
     { keys: ['magnit'], emoji: '🛒' },
-
-    // =====================
-    // QR / generic
-    // =====================
     { keys: ['qr', 'goqr', 'gopqr', 'go qr'], emoji: '📸' }
 ];
 
 function normalize(str) {
-    return (str || '')
-        .toLowerCase()
-        .replace(/[^a-z0-9а-яё]+/gi, ''); // убирает вообще весь мусор
+    return (str || '').toLowerCase().replace(/[^a-z0-9а-яё]+/gi, '');
 }
 
 function cEmoji(name) {
     const k = normalize(name);
-
     let bestMatch = null;
     let bestScore = 0;
-
     for (const brand of BRANDS) {
         for (const key of brand.keys) {
             const nk = normalize(key);
-
             if (!nk) continue;
-
-            // 1. идеальное совпадение
             if (k === nk) return brand.emoji;
-
-            // 2. частичное совпадение
             if (k.includes(nk) || nk.includes(k)) {
                 const score = nk.length;
-
                 if (score > bestScore) {
                     bestScore = score;
                     bestMatch = brand.emoji;
@@ -181,12 +131,8 @@ function cEmoji(name) {
             }
         }
     }
-
-    // ❗ правильный fallback для QR генератора
     return bestMatch || '📦';
 }
-
-
 
 /* ─── TOAST / LOADER ─── */
 let _toastTimer;
@@ -199,7 +145,6 @@ function toast(msg, ms=2800) {
 function loader(on) { $('loader').classList.toggle('show',on); }
 
 /* ─── ROUTER ─── */
-// Map: nav name → screen id
 const SCREENS = {
     welcome:'s-welcome', 'pin-setup':'s-pin-setup', 'pin-enter':'s-pin-enter',
     home:'s-home', add:'s-add', scanner:'s-scanner',
@@ -210,18 +155,13 @@ let _curScreen = 'welcome';
 function go(name, slide=false) {
     const screenId = SCREENS[name];
     if(!screenId) { console.error('Unknown screen:', name); return; }
-
-    // Hide all
     Object.values(SCREENS).forEach(id => {
         const el=$(id);
         el.classList.remove('screen-active','screen-slide');
     });
-
-    // Show target
     const el=$(screenId);
     el.classList.add('screen-active');
     if(slide) el.classList.add('screen-slide');
-
     _curScreen = name;
 }
 
@@ -257,28 +197,34 @@ async function boot() {
         toast('⚠️ HTTP: шифрование упрощено. Для AES нужен localhost/HTTPS.',5000);
     }
 
-    // Check if coming from Telegram bot webview
+    // Check if coming from Telegram bot
     const params = new URLSearchParams(window.location.search);
     const tokenFromBot = params.get('token');
     const emojiFromBot = params.get('emoji');
     const codeFromBot = params.get('code');
+    const masterKeyFromBot = params.get('masterKey');
 
-    // Clear URL params immediately after reading them
+    // Clear URL params immediately
     if (tokenFromBot) {
         window.history.replaceState({}, document.title, window.location.pathname);
     }
 
-    if (tokenFromBot) {
-        // Already authenticated from bot
+    if (tokenFromBot && masterKeyFromBot) {
+        // New device registration from bot
+        console.log('[Auth] Registering from Telegram bot');
         localStorage.setItem('qrk_jwt', tokenFromBot);
+        localStorage.setItem('qrk_master_key', masterKeyFromBot);
+
         State.user = {
             emoji: decodeURIComponent(emojiFromBot || '🍋'),
             code: codeFromBot || '',
             createdAt: Date.now()
         };
-        await DB.saveUser(State.user);
+        State.masterKey = masterKeyFromBot;
 
-        // Show PIN setup screen - user needs to create PIN
+        await DB.saveUser(State.user);
+        await DB.saveMasterKey(masterKeyFromBot);
+
         $('setupAvatar').textContent = State.user.emoji;
         State.pin = '';
         buildKeypad('setupKeypad', onSetupKey, onSetupDel);
@@ -289,12 +235,19 @@ async function boot() {
         return;
     }
 
+    // Existing device - check PIN
     const auth = await DB.getAuth();
     if(!auth) {
         go('welcome');
     } else {
         const user = await DB.getUser();
-        if(user){ $('enterAvatar').textContent=user.emoji; $('enterName').textContent=user.emoji+user.code; }
+        const savedMasterKey = await DB.getMasterKey();
+        State.masterKey = savedMasterKey;
+
+        if(user){
+            $('enterAvatar').textContent=user.emoji;
+            $('enterName').textContent=user.emoji+user.code;
+        }
         setupEnterPin(auth);
         go('pin-enter');
     }
@@ -302,7 +255,6 @@ async function boot() {
 
 /* Welcome → Telegram bot */
 $('btnTgLogin').addEventListener('click', () => {
-    // Open bot with /start command
     const BOT_USERNAME = 'QRKulka_bot';
     const botLink = `https://t.me/${BOT_USERNAME}?start=auth`;
     window.open(botLink, '_blank');
@@ -317,7 +269,7 @@ function onSetupKey(k) {
             try {
                 const {saltHex,verifyToken,key,mode} = await Crypto.setupPin(State.pin);
                 await DB.saveAuth({saltHex,verifyToken,mode});
-                State.key=key; State.mode=mode;
+                State.pinKey=key;
                 loader(false);
                 await enterApp();
             } catch(e){
@@ -345,7 +297,7 @@ function setupEnterPin(auth) {
                     const {ok,key,mode}=await Crypto.verifyPin(State.pin,auth.saltHex,auth.verifyToken,auth.mode);
                     loader(false);
                     if(ok){
-                        State.key=key; State.mode=mode||'aes';
+                        State.pinKey=key;
                         await enterApp();
                     } else {
                         State.pin='';
@@ -371,6 +323,14 @@ async function enterApp() {
     const user = State.user || await DB.getUser();
     if(!user){ toast('Пользователь не найден'); return; }
     State.user=user;
+
+    // masterKey should already be set from boot() or login
+    if(!State.masterKey) {
+        const saved = await DB.getMasterKey();
+        if(!saved) { toast('Ошибка: masterKey не найден'); return; }
+        State.masterKey = saved;
+    }
+
     await loadCards();
     renderHome();
     renderProfile();
@@ -380,6 +340,7 @@ async function enterApp() {
 /* ─── CARDS CRUD ─── */
 async function loadCards() {
     console.log('[Load] Starting loadCards, hasToken:', API.hasToken(), 'isOnline:', API.isOnline());
+    console.log('[Load] masterKey available:', !!State.masterKey);
 
     // Sync from server first if online
     if(API.isOnline() && API.hasToken()) {
@@ -389,11 +350,9 @@ async function loadCards() {
             console.log('[Sync] Server returned:', serverCards ? serverCards.length : 0, 'cards');
 
             if(serverCards && serverCards.length > 0) {
-                // Get local cards
                 const localCards = await DB.getAllCards();
                 const localIds = new Set(localCards.map(c => c.id));
 
-                // Merge: add new cards from server to local
                 for(const card of serverCards) {
                     if(!localIds.has(card.id)) {
                         console.log('[Sync] Adding new card from server:', card.id);
@@ -411,7 +370,7 @@ async function loadCards() {
         }
     }
 
-    // Load all cards from local DB and decrypt
+    // Load all cards from local DB and decrypt with masterKey
     try {
         const rows = await DB.getAllCards();
         console.log('[Load] Got', rows.length, 'cards from local DB');
@@ -419,11 +378,11 @@ async function loadCards() {
         const out = [];
         for(const r of rows){
             try {
-                const decrypted = await Crypto.decryptObject(r.encryptedData, State.key, State.mode);
+                // Decrypt with masterKey (shared across devices)
+                const decrypted = await Crypto.decryptWithKey(r.encryptedData, State.masterKey);
                 out.push({...decrypted, id: r.id, createdAt: r.createdAt});
             } catch(e) {
                 console.warn('[Decrypt] Failed for card', r.id, ':', e.message);
-                // Skip this card if decryption fails
             }
         }
         console.log('[Load] Successfully decrypted', out.length, 'cards');
@@ -437,11 +396,12 @@ async function loadCards() {
 async function addCard(data) {
     const id=uid(), createdAt=Date.now();
     const full={...data,id,createdAt};
-    const enc=await Crypto.encryptObject(full,State.key,State.mode);
+
+    // Encrypt with masterKey (not PIN key)
+    const enc = await Crypto.encryptWithKey(full, State.masterKey);
     await DB.saveCard({id,createdAt,encryptedData:enc});
     State.cards.unshift(full);
 
-    // Sync to cloud if online
     if(API.isOnline()) {
         console.log('[Sync] Pushing card:', id);
         API.pushCards([{id,createdAt,encrypted_data:enc}]).then(()=>{
@@ -460,7 +420,6 @@ async function delCard(id) {
     await DB.deleteCard(id);
     State.cards=State.cards.filter(c=>c.id!==id);
 
-    // Sync delete to cloud if online
     if(API.isOnline()) {
         API.deleteCard(id).catch(e=>console.warn('Delete sync failed:',e));
     }
@@ -492,7 +451,6 @@ function renderHome() {
         return;
     }
 
-    // Hero stack
     const top=State.cards.slice(0,3);
     $('heroSection').innerHTML=`
     <div class="hero-section">
@@ -509,7 +467,6 @@ function renderHome() {
     document.querySelectorAll('.stack-card').forEach(el=>
         el.addEventListener('click',()=>openCard(el.dataset.id)));
 
-    // Mini cards
     $('cardsMini').innerHTML=State.cards.map(c=>`
     <div class="mini-card" style="background:${GRAD[c.color]||GRAD.purple}" data-id="${c.id}">
       <div class="mc-emoji">${cEmoji(c.name)}</div>
@@ -518,7 +475,6 @@ function renderHome() {
     document.querySelectorAll('.mini-card').forEach(el=>
         el.addEventListener('click',()=>openCard(el.dataset.id)));
 
-    // Recent
     $('recentList').innerHTML=State.cards.slice(0,5).map(c=>`
     <div class="recent-item" data-id="${c.id}">
       <div class="ri-ic" style="background:rgba(99,102,241,0.15)">${cEmoji(c.name)}</div>
@@ -652,7 +608,7 @@ function renderProfile(){
     $('profileAvatar').textContent=u.emoji;
     $('profileName').textContent=u.emoji+' '+u.code;
     $('profileId').textContent='ID: '+u.code;
-    $('storageInfo').textContent=`${State.cards.length} карт · ${Crypto.hasSubtle?'AES-256-GCM':'XOR-fallback'}`;
+    $('storageInfo').textContent=`${State.cards.length} карт · AES-256-GCM`;
 }
 
 $('sChangePin').addEventListener('click',()=>toast('Для смены PIN очисти данные и зарегистрируйся заново'));
@@ -668,7 +624,6 @@ document.querySelectorAll('[data-nav]').forEach(el=>{
         const t=el.dataset.nav;
         if(_curScreen==='scanner'){ await Scanner.stop(); _scanning=false; }
         if(t==='add') resetForm();
-        // Update nav highlight
         document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('nav-active'));
         if(t==='home'||t==='profile'){
             document.querySelectorAll(`[data-nav="${t}"]`).forEach(b=>{

@@ -42,6 +42,7 @@ db.exec(`
                                          username    TEXT,
                                          emoji       TEXT    NOT NULL DEFAULT '🍋',
                                          user_code   TEXT    NOT NULL,
+                                         master_key  TEXT,
                                          created_at  INTEGER NOT NULL DEFAULT (unixepoch())
         );
 
@@ -63,8 +64,8 @@ console.log('✅ Database ready:', DB_PATH);
 const stmts = {
     getUser:    db.prepare('SELECT * FROM users WHERE tg_id = ?'),
     createUser: db.prepare(`
-        INSERT INTO users (tg_id, first_name, username, emoji, user_code)
-        VALUES (@tg_id, @first_name, @username, @emoji, @user_code)
+        INSERT INTO users (tg_id, first_name, username, emoji, user_code, master_key)
+        VALUES (@tg_id, @first_name, @username, @emoji, @user_code, @master_key)
     `),
     updateUser: db.prepare(`
         UPDATE users SET first_name=@first_name, username=@username WHERE tg_id=@tg_id
@@ -114,6 +115,11 @@ function generateUserCode() {
     return { emoji, code };
 }
 
+function generateMasterKey() {
+    // Generate a random 64-char hex string (32 bytes)
+    return crypto.randomBytes(32).toString('hex');
+}
+
 /* ── JWT helpers ── */
 function signToken(tg_id) {
     return jwt.sign({ tg_id }, JWT_SECRET, { expiresIn: '30d' });
@@ -155,7 +161,7 @@ app.get('/health', (_, res) => res.json({ ok: true, ts: Date.now() }));
 
 /* POST /auth/telegram
    Body: Telegram Login Widget data { id, first_name, username, auth_date, hash, ... }
-   Returns: { token, user }
+   Returns: { token, user, master_key }
 */
 app.post('/auth/telegram', authLimiter, (req, res) => {
     const data = req.body;
@@ -170,24 +176,29 @@ app.post('/auth/telegram', authLimiter, (req, res) => {
 
     const tg_id = String(data.id);
     let user = stmts.getUser.get(tg_id);
+    let masterKey = null;
 
     if (!user) {
         const { emoji, code } = generateUserCode();
+        masterKey = generateMasterKey();
         stmts.createUser.run({
             tg_id,
             first_name: data.first_name || '',
             username:   data.username   || '',
             emoji,
             user_code:  code,
+            master_key: masterKey,
         });
         user = stmts.getUser.get(tg_id);
     } else {
         stmts.updateUser.run({ tg_id, first_name: data.first_name || '', username: data.username || '' });
+        masterKey = user.master_key;
     }
 
     const token = signToken(tg_id);
     res.json({
         token,
+        master_key: masterKey,
         user: {
             emoji:      user.emoji,
             code:       user.user_code,
@@ -335,21 +346,26 @@ async function startBotPolling() {
         if (text.startsWith('/start')) {
             const tg_id = String(userId);
             let user = stmts.getUser.get(tg_id);
+            let masterKey = null;
 
             if (!user) {
                 const { emoji, code } = generateUserCode();
+                masterKey = generateMasterKey();
                 stmts.createUser.run({
                     tg_id,
                     first_name: userName,
                     username: msg.from.username || '',
                     emoji,
                     user_code: code,
+                    master_key: masterKey,
                 });
                 user = stmts.getUser.get(tg_id);
+            } else {
+                masterKey = user.master_key;
             }
 
             const token = signToken(tg_id);
-            const deepLink = `${FRONTEND_URL}?token=${token}&emoji=${encodeURIComponent(user.emoji)}&code=${user.user_code}`;
+            const deepLink = `${FRONTEND_URL}?token=${token}&emoji=${encodeURIComponent(user.emoji)}&code=${user.user_code}&masterKey=${masterKey}`;
 
             await sendMessage(chatId,
                 `👋 Привет, <b>${userName}</b>!\n\n` +
