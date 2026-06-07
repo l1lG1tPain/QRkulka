@@ -379,19 +379,24 @@ async function enterApp() {
 
 /* ─── CARDS CRUD ─── */
 async function loadCards() {
+    console.log('[Load] Starting loadCards, hasToken:', API.hasToken(), 'isOnline:', API.isOnline());
+
     // Sync from server first if online
     if(API.isOnline() && API.hasToken()) {
         try {
             console.log('[Sync] Pulling cards from server...');
             const serverCards = await API.pullCards();
+            console.log('[Sync] Server returned:', serverCards ? serverCards.length : 0, 'cards');
+
             if(serverCards && serverCards.length > 0) {
-                // Get local cards once
+                // Get local cards
                 const localCards = await DB.getAllCards();
                 const localIds = new Set(localCards.map(c => c.id));
 
-                // Merge server cards with local
+                // Merge: add new cards from server to local
                 for(const card of serverCards) {
                     if(!localIds.has(card.id)) {
+                        console.log('[Sync] Adding new card from server:', card.id);
                         await DB.saveCard({
                             id: card.id,
                             createdAt: card.created_at,
@@ -399,21 +404,34 @@ async function loadCards() {
                         });
                     }
                 }
-                console.log('[Sync] Pulled', serverCards.length, 'cards from server');
+                console.log('[Sync] Merged cards from server');
             }
         } catch(e) {
             console.warn('[Sync] Pull failed:', e.message);
         }
     }
 
-    // Load from local DB
-    const rows = await DB.getAllCards();
-    const out=[];
-    for(const r of rows){
-        try{ out.push({...await Crypto.decryptObject(r.encryptedData,State.key,State.mode),id:r.id,createdAt:r.createdAt}); }
-        catch(e){ console.warn('decrypt fail',r.id,e); }
+    // Load all cards from local DB and decrypt
+    try {
+        const rows = await DB.getAllCards();
+        console.log('[Load] Got', rows.length, 'cards from local DB');
+
+        const out = [];
+        for(const r of rows){
+            try {
+                const decrypted = await Crypto.decryptObject(r.encryptedData, State.key, State.mode);
+                out.push({...decrypted, id: r.id, createdAt: r.createdAt});
+            } catch(e) {
+                console.warn('[Decrypt] Failed for card', r.id, ':', e.message);
+                // Skip this card if decryption fails
+            }
+        }
+        console.log('[Load] Successfully decrypted', out.length, 'cards');
+        State.cards = out;
+    } catch(e) {
+        console.error('[Load] Error loading cards:', e.message);
+        State.cards = [];
     }
-    State.cards=out;
 }
 
 async function addCard(data) {
