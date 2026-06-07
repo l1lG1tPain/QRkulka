@@ -272,6 +272,8 @@ async function boot() {
             createdAt: Date.now()
         };
         await DB.saveUser(State.user);
+
+        // Show PIN setup screen - user needs to create PIN
         $('setupAvatar').textContent = State.user.emoji;
         State.pin = '';
         buildKeypad('setupKeypad', onSetupKey, onSetupDel);
@@ -296,7 +298,7 @@ async function boot() {
 /* Welcome → Telegram bot */
 $('btnTgLogin').addEventListener('click', () => {
     // Open bot with /start command
-    const BOT_USERNAME = 'QRKulka_bot'; // замени на свой username
+    const BOT_USERNAME = 'QRKulka_bot';
     const botLink = `https://t.me/${BOT_USERNAME}?start=auth`;
     window.open(botLink, '_blank');
 });
