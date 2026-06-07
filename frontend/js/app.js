@@ -380,10 +380,13 @@ async function loadCards() {
             console.log('[Sync] Pulling cards from server...');
             const serverCards = await API.pullCards();
             if(serverCards && serverCards.length > 0) {
+                // Get local cards once
+                const localCards = await DB.getAllCards();
+                const localIds = new Set(localCards.map(c => c.id));
+
                 // Merge server cards with local
                 for(const card of serverCards) {
-                    const exists = await DB.getAllCards().then(cards => cards.find(c => c.id === card.id));
-                    if(!exists) {
+                    if(!localIds.has(card.id)) {
                         await DB.saveCard({
                             id: card.id,
                             createdAt: card.created_at,
