@@ -84,6 +84,7 @@ const stmts = {
 /* ── Telegram auth verification ── */
 function verifyTelegramAuth(data) {
     const { hash, ...rest } = data;
+    // Check auth_date not too old (1 hour)
     if (Date.now() / 1000 - parseInt(rest.auth_date) > 3600) return false;
 
     const dataCheckStr = Object.keys(rest)
@@ -152,7 +153,10 @@ const apiLimiter  = rateLimit({ windowMs: 60_000, max: 120 });
 /* Health check */
 app.get('/health', (_, res) => res.json({ ok: true, ts: Date.now() }));
 
-/* POST /auth/telegram */
+/* POST /auth/telegram
+   Body: Telegram Login Widget data { id, first_name, username, auth_date, hash, ... }
+   Returns: { token, user }
+*/
 app.post('/auth/telegram', authLimiter, (req, res) => {
     const data = req.body;
 
@@ -209,7 +213,7 @@ app.get('/me', authMiddleware, (req, res) => {
     });
 });
 
-/* GET /cards */
+/* GET /cards — get all encrypted card blobs */
 app.get('/cards', authMiddleware, apiLimiter, (req, res) => {
     const rows = stmts.getCards.all(req.user.tg_id);
     res.json(rows.map(r => ({
@@ -220,7 +224,10 @@ app.get('/cards', authMiddleware, apiLimiter, (req, res) => {
     })));
 });
 
-/* POST /cards */
+/* POST /cards — upsert one or many cards
+   Body: { cards: [{ id, encrypted_data, created_at }] }
+   Server stores ONLY encrypted blobs — never sees card data
+*/
 app.post('/cards', authMiddleware, apiLimiter, (req, res) => {
     const { cards } = req.body;
     if (!Array.isArray(cards) || cards.length === 0) {
@@ -255,8 +262,10 @@ app.delete('/cards/:id', authMiddleware, apiLimiter, (req, res) => {
     res.json({ ok: true });
 });
 
+/* 404 */
 app.use((_, res) => res.status(404).json({ error: 'Not found' }));
 
+/* Error handler */
 app.use((err, _, res, __) => {
     console.error(err);
     res.status(500).json({ error: 'Internal error' });
@@ -294,32 +303,22 @@ async function startBotPolling() {
             parse_mode: 'HTML',
             reply_markup: buttons,
         });
-        console.log('[Bot] Sending message to', chatId, 'with buttons:', !!buttons);
         try {
             await new Promise((resolve, reject) => {
                 const req = https.request(`${botApiUrl}/sendMessage`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Content-Length': payload.length },
                 }, res => {
-                    console.log('[Bot] sendMessage response status:', res.statusCode);
                     let body = '';
                     res.on('data', chunk => body += chunk);
-                    res.on('end', () => {
-                        if (res.statusCode !== 200) {
-                            console.error('[Bot] sendMessage failed:', body);
-                        }
-                        resolve(body);
-                    });
+                    res.on('end', () => resolve(body));
                 });
-                req.on('error', (e) => {
-                    console.error('[Bot] sendMessage request error:', e.message);
-                    reject(e);
-                });
+                req.on('error', reject);
                 req.write(payload);
                 req.end();
             });
         } catch (e) {
-            console.error('[Bot] sendMessage error:', e.message);
+            console.warn('[Bot] sendMessage error:', e.message);
         }
     }
 
@@ -332,10 +331,8 @@ async function startBotPolling() {
         const text = msg.text || '';
         const userName = msg.from.first_name || 'User';
 
-        console.log('[Bot] Got message from', userId, ':', text);
-
+        // /start command → show auth button
         if (text.startsWith('/start')) {
-            console.log('[Bot] Processing /start from', userId);
             const tg_id = String(userId);
             let user = stmts.getUser.get(tg_id);
 
@@ -349,13 +346,10 @@ async function startBotPolling() {
                     user_code: code,
                 });
                 user = stmts.getUser.get(tg_id);
-                console.log('[Bot] Created new user:', tg_id, emoji, code);
             }
 
             const token = signToken(tg_id);
             const deepLink = `${FRONTEND_URL}?token=${token}&emoji=${encodeURIComponent(user.emoji)}&code=${user.user_code}`;
-
-            console.log('[Bot] Sending webview button:', deepLink);
 
             await sendMessage(chatId,
                 `👋 Привет, <b>${userName}</b>!\n\n` +
@@ -370,6 +364,7 @@ async function startBotPolling() {
         }
     }
 
+    // Polling loop
     console.log('🤖 Telegram Bot polling started');
     setInterval(async () => {
         const updates = await getUpdates();
@@ -384,5 +379,5 @@ async function startBotPolling() {
 app.listen(PORT, () => {
     console.log(`🚀 QRKulka API on port ${PORT}`);
     console.log(`   CORS: ${FRONTEND_URL}`);
-    startBotPolling().catch(e => console.error('[Bot] Fatal error:', e));
+    startBotPolling();
 });
