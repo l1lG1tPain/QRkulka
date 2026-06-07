@@ -296,7 +296,7 @@ async function boot() {
 /* Welcome → Telegram bot */
 $('btnTgLogin').addEventListener('click', () => {
     // Open bot with /start command
-    const BOT_USERNAME = 'QRKulka_bot'; // замени на свой username
+    const BOT_USERNAME = 'QRKulkaBot'; // замени на свой username
     const botLink = `https://t.me/${BOT_USERNAME}?start=auth`;
     window.open(botLink, '_blank');
 });
@@ -387,12 +387,23 @@ async function addCard(data) {
     const enc=await Crypto.encryptObject(full,State.key,State.mode);
     await DB.saveCard({id,createdAt,encryptedData:enc});
     State.cards.unshift(full);
+
+    // Sync to cloud if online
+    if(API.isOnline()) {
+        API.pushCards([{id,createdAt,encrypted_data:enc}]).catch(e=>console.warn('Sync failed:',e));
+    }
+
     return full;
 }
 
 async function delCard(id) {
     await DB.deleteCard(id);
     State.cards=State.cards.filter(c=>c.id!==id);
+
+    // Sync delete to cloud if online
+    if(API.isOnline()) {
+        API.deleteCard(id).catch(e=>console.warn('Delete sync failed:',e));
+    }
 }
 
 /* ─── HOME ─── */
