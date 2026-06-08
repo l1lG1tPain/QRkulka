@@ -8,6 +8,7 @@
 const State = {
     masterKey: null,        // Shared encryption key from server
     pinKey: null,           // Local PIN encryption key
+    token: null,            // Telegram bot token
     user: null, cards: [],
     editId: null, pin: '',
     color: 'purple', type: 'QR',
@@ -220,6 +221,7 @@ async function boot() {
             createdAt: Date.now()
         };
         State.masterKey = masterKeyFromBot;
+        State.token = tokenFromBot;
 
         await DB.saveUser(State.user);
         await DB.saveMasterKey(masterKeyFromBot);
@@ -253,9 +255,10 @@ async function boot() {
 
                                 // Verify PIN on server
                                 try {
+                                    const token = API.getToken() || State.token;
                                     const res = await fetch((window.QRKULKA_API || 'https://api.qrkulka.com') + '/auth/verify-pin', {
                                         method: 'POST',
-                                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + API.getToken() },
+                                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
                                         body: JSON.stringify({ pinHash: pinHashHex, action: 'verify' })
                                     });
                                     loader(false);
@@ -360,9 +363,10 @@ function onSetupKey(k) {
                 const pinHashHex = Array.from(new Uint8Array(pinHashBuffer)).map(b=>b.toString(16).padStart(2,'0')).join('');
 
                 // Save PIN to server
+                const token = API.getToken() || State.token;
                 const res = await fetch((window.QRKULKA_API || 'https://api.qrkulka.com') + '/auth/verify-pin', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + API.getToken() },
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
                     body: JSON.stringify({ pinHash: pinHashHex, action: 'create' })
                 });
 
