@@ -267,21 +267,34 @@ app.post('/auth/refresh', authMiddleware, (req, res) => {
     res.json({ token });
 });
 
-/* POST /auth/verify-pin - Save PIN hash on first login */
+/* POST /auth/verify-pin - Save or verify PIN */
 app.post('/auth/verify-pin', authMiddleware, (req, res) => {
-    const { pinHash } = req.body;
+    const { pinHash, action } = req.body;
     if (!pinHash) return res.status(400).json({ error: 'PIN hash required' });
 
     const user = stmts.getUser.get(req.user.tg_id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    // Only save if user doesn't have a PIN yet
-    if (!user.pin_hash) {
-        db.prepare('UPDATE users SET pin_hash = ? WHERE tg_id = ?').run(pinHash, req.user.tg_id);
-        console.log(`✅ Saved PIN hash for ${user.user_code}`);
+    if (action === 'create') {
+        // Save PIN on first creation
+        if (!user.pin_hash) {
+            db.prepare('UPDATE users SET pin_hash = ? WHERE tg_id = ?').run(pinHash, req.user.tg_id);
+            console.log(`✅ Created PIN for ${user.user_code}`);
+        }
+        res.json({ ok: true });
+    } else if (action === 'verify') {
+        // Verify PIN on login
+        if (!user.pin_hash) {
+            return res.status(400).json({ error: 'PIN not set' });
+        }
+        if (pinHash !== user.pin_hash) {
+            return res.status(401).json({ error: 'Invalid PIN' });
+        }
+        console.log(`✅ PIN verified for ${user.user_code}`);
+        res.json({ ok: true });
+    } else {
+        res.status(400).json({ error: 'Invalid action' });
     }
-
-    res.json({ ok: true });
 });
 
 /* GET /me */

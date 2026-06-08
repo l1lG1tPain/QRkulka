@@ -210,7 +210,6 @@ async function boot() {
     }
 
     if (tokenFromBot && masterKeyFromBot) {
-        // New/existing device registration from bot
         console.log('[Auth] Registering from Telegram bot, code:', codeFromBot);
         localStorage.setItem('qrk_jwt', tokenFromBot);
         localStorage.setItem('qrk_master_key', masterKeyFromBot);
@@ -225,11 +224,81 @@ async function boot() {
         await DB.saveUser(State.user);
         await DB.saveMasterKey(masterKeyFromBot);
 
+        // Check if user already has PIN set on server
+        try {
+            const me = await API.getMe();
+            if (me && me.pin_hash) {
+                // PIN already exists - show PIN entry screen
+                console.log('[Auth] PIN already set, requesting entry');
+                $('enterAvatar').textContent = State.user.emoji;
+                $('enterName').textContent = State.user.emoji + State.user.code;
+
+                // Load cards but don't decrypt yet
+                await loadCards();
+                renderHome();
+                renderProfile();
+
+                // Show PIN entry instead of creation
+                State.pin = '';
+                buildKeypad('enterKeypad',
+                    async(k)=>{
+                        if(State.pin.length>=4) return;
+                        State.pin+=k; setDots('enterDots',State.pin);
+                        $('pinError').style.display='none';
+                        if(State.pin.length===4){
+                            setTimeout(async()=>{
+                                loader(true);
+                                const pinHashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(State.pin));
+                                const pinHashHex = Array.from(new Uint8Array(pinHashBuffer)).map(b=>b.toString(16).padStart(2,'0')).join('');
+
+                                // Verify PIN on server
+                                try {
+                                    const res = await fetch((window.QRKULKA_API || 'https://api.qrkulka.com') + '/auth/verify-pin', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + API.getToken() },
+                                        body: JSON.stringify({ pinHash: pinHashHex, action: 'verify' })
+                                    });
+                                    loader(false);
+
+                                    if (res.ok) {
+                                        // PIN correct
+                                        await enterApp();
+                                    } else {
+                                        // PIN incorrect
+                                        State.pin='';
+                                        setDots('enterDots','',true);
+                                        $('pinError').style.display='block';
+                                        const d=$('enterDots');
+                                        d.style.animation='shake .4s ease';
+                                        setTimeout(()=>{ d.style.animation=''; setDots('enterDots',''); },500);
+                                    }
+                                } catch(e) {
+                                    loader(false);
+                                    toast('Ошибка проверки PIN: '+e.message);
+                                    State.pin='';
+                                    setDots('enterDots','');
+                                }
+                            },100);
+                        }
+                    },
+                    ()=>{
+                        State.pin=State.pin.slice(0,-1);
+                        setDots('enterDots',State.pin);
+                        $('pinError').style.display='none';
+                    }
+                );
+                go('pin-enter', true);
+                return;
+            }
+        } catch(e) {
+            console.warn('[Auth] Could not check PIN status:', e.message);
+        }
+
+        // No PIN yet - show PIN creation screen
         $('setupAvatar').textContent = State.user.emoji;
         State.pin = '';
         buildKeypad('setupKeypad', onSetupKey, onSetupDel);
 
-        // Load existing cards if this is a returning user
         await loadCards();
         renderHome();
         renderProfile();
@@ -286,14 +355,20 @@ function onSetupKey(k) {
         setTimeout(async()=>{
             loader(true);
             try {
-                const {saltHex,verifyToken,key,mode} = await Crypto.setupPin(State.pin);
-                await DB.saveAuth({saltHex,verifyToken,mode});
-                State.pinKey=key;
-
-                // Save PIN hash for server PIN verification
+                // Calculate PIN hash
                 const pinHashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(State.pin));
                 const pinHashHex = Array.from(new Uint8Array(pinHashBuffer)).map(b=>b.toString(16).padStart(2,'0')).join('');
-                await DB.kvSet('pin_hash', pinHashHex);
+
+                // Save PIN to server
+                const res = await fetch((window.QRKULKA_API || 'https://api.qrkulka.com') + '/auth/verify-pin', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + API.getToken() },
+                    body: JSON.stringify({ pinHash: pinHashHex, action: 'create' })
+                });
+
+                if (!res.ok) {
+                    throw new Error('PIN save failed');
+                }
 
                 loader(false);
                 await enterApp();
