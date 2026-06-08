@@ -200,7 +200,12 @@ app.post('/auth/telegram', authLimiter, (req, res) => {
 
     const tg_id = String(data.id);
     let user = stmts.getUser.get(tg_id);
-    let masterKey = null;  // ✅ FIX: Initialize masterKey outside if/else block
+
+    // ════════════════════════════════════════════════════════════════════
+    // 🔧 FIX v1.1: DECLARE masterKey ONCE, OUTSIDE if/else blocks
+    // This prevents ReferenceError when async operations access the variable
+    // ════════════════════════════════════════════════════════════════════
+    let masterKey = null;
 
     if (!user) {
         // New user - create with fresh master_key
@@ -394,7 +399,12 @@ async function startBotPolling() {
         if (text.startsWith('/start')) {
             const tg_id = String(userId);
             let user = stmts.getUser.get(tg_id);
-            let masterKey = null;  // ✅ FIX: Initialize masterKey here too
+
+            // ════════════════════════════════════════════════════════════════════
+            // 🔧 FIX v1.1: ALSO declare masterKey ONCE here in bot handler
+            // Same issue applies to Telegram Bot polling context
+            // ════════════════════════════════════════════════════════════════════
+            let masterKey = null;
 
             if (!user) {
                 const { emoji, code } = generateUserCode();
