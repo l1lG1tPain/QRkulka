@@ -289,6 +289,12 @@ function onSetupKey(k) {
                 const {saltHex,verifyToken,key,mode} = await Crypto.setupPin(State.pin);
                 await DB.saveAuth({saltHex,verifyToken,mode});
                 State.pinKey=key;
+
+                // Save PIN hash for server PIN verification
+                const pinHashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(State.pin));
+                const pinHashHex = Array.from(new Uint8Array(pinHashBuffer)).map(b=>b.toString(16).padStart(2,'0')).join('');
+                await DB.kvSet('pin_hash', pinHashHex);
+
                 loader(false);
                 await enterApp();
             } catch(e){
@@ -352,6 +358,21 @@ async function enterApp() {
             return;
         }
         State.masterKey = saved;
+    }
+
+    // Send PIN hash to server for verification on next login
+    try {
+        const pinHash = await DB.kvGet('pin_hash');
+        if(pinHash && API.hasToken()) {
+            const token = API.getToken();
+            await fetch((window.QRKULKA_API || 'https://api.qrkulka.com') + '/auth/verify-pin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ pinHash })
+            }).catch(e => console.warn('[Auth] PIN verification failed:', e.message));
+        }
+    } catch(e) {
+        console.warn('[Auth] Could not send PIN hash:', e.message);
     }
 
     console.log('[App] Entering with user:', user.code, 'masterKey:', !!State.masterKey);

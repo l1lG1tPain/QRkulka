@@ -218,11 +218,19 @@ app.post('/auth/telegram', authLimiter, (req, res) => {
             emoji,
             user_code:  code,
             master_key: masterKey,
+            pin_hash:   pinHash || null,
         });
         user = stmts.getUser.get(tg_id);
         console.log(`✅ New user: ${code} (${tg_id})`);
     } else {
-        // Existing user
+        // Existing user - check PIN if set
+        if (user.pin_hash && pinHash && pinHash !== user.pin_hash) {
+            return res.status(401).json({ error: 'Invalid PIN' });
+        }
+        if (user.pin_hash && !pinHash) {
+            return res.status(401).json({ error: 'PIN required' });
+        }
+
         stmts.updateUser.run({
             tg_id,
             first_name: data.first_name || '',
@@ -257,6 +265,23 @@ app.post('/auth/telegram', authLimiter, (req, res) => {
 app.post('/auth/refresh', authMiddleware, (req, res) => {
     const token = signToken(req.user.tg_id);
     res.json({ token });
+});
+
+/* POST /auth/verify-pin - Save PIN hash on first login */
+app.post('/auth/verify-pin', authMiddleware, (req, res) => {
+    const { pinHash } = req.body;
+    if (!pinHash) return res.status(400).json({ error: 'PIN hash required' });
+
+    const user = stmts.getUser.get(req.user.tg_id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Only save if user doesn't have a PIN yet
+    if (!user.pin_hash) {
+        db.prepare('UPDATE users SET pin_hash = ? WHERE tg_id = ?').run(pinHash, req.user.tg_id);
+        console.log(`✅ Saved PIN hash for ${user.user_code}`);
+    }
+
+    res.json({ ok: true });
 });
 
 /* GET /me */
