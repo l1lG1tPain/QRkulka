@@ -85,8 +85,8 @@ migrateDatabase();
 const stmts = {
     getUser:    db.prepare('SELECT * FROM users WHERE tg_id = ?'),
     createUser: db.prepare(`
-        INSERT INTO users (tg_id, first_name, username, emoji, user_code, master_key)
-        VALUES (@tg_id, @first_name, @username, @emoji, @user_code, @master_key)
+        INSERT INTO users (tg_id, first_name, username, emoji, user_code, master_key, pin_hash)
+        VALUES (@tg_id, @first_name, @username, @emoji, @user_code, @master_key, @pin_hash)
     `),
     updateUser: db.prepare(`
         UPDATE users SET first_name=@first_name, username=@username, pin_hash=@pin_hash WHERE tg_id=@tg_id
@@ -138,7 +138,6 @@ function generateUserCode() {
 }
 
 function generateMasterKey() {
-    // Generate a random 64-char hex string (32 bytes)
     return crypto.randomBytes(32).toString('hex');
 }
 
@@ -181,14 +180,10 @@ const apiLimiter  = rateLimit({ windowMs: 60_000, max: 120 });
 /* Health check */
 app.get('/health', (_, res) => res.json({ ok: true, ts: Date.now() }));
 
-/* POST /auth/telegram
-   Body: Telegram Login Widget data { id, first_name, username, auth_date, hash, ... }
-   + OPTIONAL: pinHash (SHA-256 of PIN for verification)
-   Returns: { token, user, master_key }
-*/
+/* POST /auth/telegram */
 app.post('/auth/telegram', authLimiter, (req, res) => {
     const data = req.body;
-    const { pinHash } = data;  // Optional PIN verification
+    const { pinHash } = data;
 
     if (!data?.hash || !data?.id || !data?.auth_date) {
         return res.status(400).json({ error: 'Missing auth fields' });
@@ -200,11 +195,6 @@ app.post('/auth/telegram', authLimiter, (req, res) => {
 
     const tg_id = String(data.id);
     let user = stmts.getUser.get(tg_id);
-
-    // ════════════════════════════════════════════════════════════════════
-    // 🔧 FIX v1.1: DECLARE masterKey ONCE, OUTSIDE if/else blocks
-    // This prevents ReferenceError when async operations access the variable
-    // ════════════════════════════════════════════════════════════════════
     let masterKey = null;
 
     if (!user) {
@@ -239,7 +229,6 @@ app.post('/auth/telegram', authLimiter, (req, res) => {
         });
         masterKey = user.master_key;
 
-        // Safety: if masterKey is still null (shouldn't happen after migration, but be safe)
         if (!masterKey) {
             masterKey = generateMasterKey();
             db.prepare('UPDATE users SET master_key = ? WHERE tg_id = ?').run(masterKey, tg_id);
@@ -261,7 +250,7 @@ app.post('/auth/telegram', authLimiter, (req, res) => {
     });
 });
 
-/* POST /auth/refresh - Token refresh (optional, for future use) */
+/* POST /auth/refresh */
 app.post('/auth/refresh', authMiddleware, (req, res) => {
     const token = signToken(req.user.tg_id);
     res.json({ token });
@@ -309,11 +298,11 @@ app.get('/me', authMiddleware, (req, res) => {
         username:   user.username,
         created_at: user.created_at,
         card_count: cardCount,
-        master_key: user.master_key,  // Return masterKey so client can verify
+        master_key: user.master_key,
     });
 });
 
-/* GET /cards — get all encrypted card blobs */
+/* GET /cards */
 app.get('/cards', authMiddleware, apiLimiter, (req, res) => {
     const rows = stmts.getCards.all(req.user.tg_id);
     res.json(rows.map(r => ({
@@ -325,10 +314,7 @@ app.get('/cards', authMiddleware, apiLimiter, (req, res) => {
     })));
 });
 
-/* POST /cards — upsert one or many cards
-   Body: { cards: [{ id, encrypted_data, encryption_v, created_at }] }
-   Server stores ONLY encrypted blobs — never sees card data
-*/
+/* POST /cards */
 app.post('/cards', authMiddleware, apiLimiter, (req, res) => {
     const { cards } = req.body;
     if (!Array.isArray(cards) || cards.length === 0) {
@@ -433,15 +419,10 @@ async function startBotPolling() {
         const text = msg.text || '';
         const userName = msg.from.first_name || 'User';
 
-        // /start command → show auth button
+        // /start command
         if (text.startsWith('/start')) {
             const tg_id = String(userId);
             let user = stmts.getUser.get(tg_id);
-
-            // ════════════════════════════════════════════════════════════════════
-            // 🔧 FIX v1.1: ALSO declare masterKey ONCE here in bot handler
-            // Same issue applies to Telegram Bot polling context
-            // ════════════════════════════════════════════════════════════════════
             let masterKey = null;
 
             if (!user) {
@@ -454,11 +435,11 @@ async function startBotPolling() {
                     emoji,
                     user_code: code,
                     master_key: masterKey,
+                    pin_hash: null,
                 });
                 user = stmts.getUser.get(tg_id);
             } else {
                 masterKey = user.master_key;
-                // Safety check
                 if (!masterKey) {
                     masterKey = generateMasterKey();
                     db.prepare('UPDATE users SET master_key = ? WHERE tg_id = ?').run(masterKey, tg_id);
@@ -482,7 +463,6 @@ async function startBotPolling() {
         }
     }
 
-    // Polling loop
     console.log('🤖 Telegram Bot polling started');
     setInterval(async () => {
         const updates = await getUpdates();
