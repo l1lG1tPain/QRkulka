@@ -200,7 +200,7 @@ app.post('/auth/telegram', authLimiter, (req, res) => {
 
     const tg_id = String(data.id);
     let user = stmts.getUser.get(tg_id);
-    let masterKey = null;
+    let masterKey = null;  // ✅ FIX: Initialize masterKey outside if/else block
 
     if (!user) {
         // New user - create with fresh master_key
@@ -394,7 +394,7 @@ async function startBotPolling() {
         if (text.startsWith('/start')) {
             const tg_id = String(userId);
             let user = stmts.getUser.get(tg_id);
-            let masterKey = null;
+            let masterKey = null;  // ✅ FIX: Initialize masterKey here too
 
             if (!user) {
                 const { emoji, code } = generateUserCode();
