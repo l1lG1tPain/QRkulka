@@ -104,5 +104,5 @@ const DB = (() => {
         });
     }
 
-    return { saveAuth, getAuth, saveUser, getUser, saveMasterKey, getMasterKey, saveCard, getAllCards, deleteCard, countCards, clearAll };
+    return { saveAuth, getAuth, saveUser, getUser, saveMasterKey, getMasterKey, kvSet, kvGet, saveCard, getAllCards, deleteCard, countCards, clearAll };
 })();

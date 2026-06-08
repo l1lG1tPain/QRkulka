@@ -293,7 +293,7 @@ function onSetupKey(k) {
                 // Save PIN hash for server PIN verification
                 const pinHashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(State.pin));
                 const pinHashHex = Array.from(new Uint8Array(pinHashBuffer)).map(b=>b.toString(16).padStart(2,'0')).join('');
-                await db.kvSet('pin_hash', pinHashHex);
+                await DB.kvSet('pin_hash', pinHashHex);
 
                 loader(false);
                 await enterApp();
@@ -362,7 +362,7 @@ async function enterApp() {
 
     // Send PIN hash to server for verification on next login
     try {
-        const pinHash = await db.kvGet('pin_hash');
+        const pinHash = await DB.kvGet('pin_hash');
         if(pinHash && API.hasToken()) {
             const token = API.getToken();
             await fetch((window.QRKULKA_API || 'https://api.qrkulka.com') + '/auth/verify-pin', {
