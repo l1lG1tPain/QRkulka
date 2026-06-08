@@ -1,6 +1,6 @@
 /* ══════════════════════════════════════
-   APP.JS v4 — master_key architecture
-   PIN (local) + masterKey (server) sync
+   APP.JS v5 — Fixed master_key + card sync
+   Proper auth flow, migration handling, error recovery
 ══════════════════════════════════════ */
 'use strict';
 
@@ -210,8 +210,8 @@ async function boot() {
     }
 
     if (tokenFromBot && masterKeyFromBot) {
-        // New device registration from bot
-        console.log('[Auth] Registering from Telegram bot');
+        // New/existing device registration from bot
+        console.log('[Auth] Registering from Telegram bot, code:', codeFromBot);
         localStorage.setItem('qrk_jwt', tokenFromBot);
         localStorage.setItem('qrk_master_key', masterKeyFromBot);
 
@@ -228,6 +228,8 @@ async function boot() {
         $('setupAvatar').textContent = State.user.emoji;
         State.pin = '';
         buildKeypad('setupKeypad', onSetupKey, onSetupDel);
+
+        // Load existing cards if this is a returning user
         await loadCards();
         renderHome();
         renderProfile();
@@ -242,6 +244,14 @@ async function boot() {
     } else {
         const user = await DB.getUser();
         const savedMasterKey = await DB.getMasterKey();
+
+        if (!savedMasterKey) {
+            console.error('[Auth] No masterKey found locally!');
+            toast('⚠️ Данные повреждены, пожалуйста переайдите через Telegram');
+            go('welcome');
+            return;
+        }
+
         State.masterKey = savedMasterKey;
 
         if(user){
@@ -324,12 +334,18 @@ async function enterApp() {
     if(!user){ toast('Пользователь не найден'); return; }
     State.user=user;
 
-    // masterKey should already be set from boot() or login
+    // Ensure masterKey is available
     if(!State.masterKey) {
         const saved = await DB.getMasterKey();
-        if(!saved) { toast('Ошибка: masterKey не найден'); return; }
+        if(!saved) {
+            toast('❌ Ошибка: ключ шифрования не найден. Пожалуйста переавторизуйтесь через Telegram');
+            go('welcome');
+            return;
+        }
         State.masterKey = saved;
     }
+
+    console.log('[App] Entering with user:', user.code, 'masterKey:', !!State.masterKey);
 
     await loadCards();
     renderHome();
@@ -341,6 +357,12 @@ async function enterApp() {
 async function loadCards() {
     console.log('[Load] Starting loadCards, hasToken:', API.hasToken(), 'isOnline:', API.isOnline());
     console.log('[Load] masterKey available:', !!State.masterKey);
+
+    if (!State.masterKey) {
+        console.error('[Load] No masterKey! Cannot decrypt cards');
+        State.cards = [];
+        return;
+    }
 
     // Sync from server first if online
     if(API.isOnline() && API.hasToken()) {
@@ -371,21 +393,24 @@ async function loadCards() {
     }
 
     // Load all cards from local DB and decrypt with masterKey
+    const out = [];
     try {
         const rows = await DB.getAllCards();
         console.log('[Load] Got', rows.length, 'cards from local DB');
 
-        const out = [];
         for(const r of rows){
             try {
                 // Decrypt with masterKey (shared across devices)
                 const decrypted = await Crypto.decryptWithKey(r.encryptedData, State.masterKey);
                 out.push({...decrypted, id: r.id, createdAt: r.createdAt});
+                console.log('[Load] ✓ Decrypted card:', r.id);
             } catch(e) {
+                // Individual card decryption failed - continue with others
                 console.warn('[Decrypt] Failed for card', r.id, ':', e.message);
+                // Could add a notification here if needed
             }
         }
-        console.log('[Load] Successfully decrypted', out.length, 'cards');
+        console.log('[Load] Successfully decrypted', out.length, 'of', rows.length, 'cards');
         State.cards = out;
     } catch(e) {
         console.error('[Load] Error loading cards:', e.message);
@@ -396,6 +421,10 @@ async function loadCards() {
 async function addCard(data) {
     const id=uid(), createdAt=Date.now();
     const full={...data,id,createdAt};
+
+    if (!State.masterKey) {
+        throw new Error('MasterKey not available');
+    }
 
     // Encrypt with masterKey (not PIN key)
     const enc = await Crypto.encryptWithKey(full, State.masterKey);

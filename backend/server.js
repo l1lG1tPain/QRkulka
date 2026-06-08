@@ -43,6 +43,7 @@ db.exec(`
                                          emoji       TEXT    NOT NULL DEFAULT '🍋',
                                          user_code   TEXT    NOT NULL,
                                          master_key  TEXT,
+                                         pin_hash    TEXT,
                                          created_at  INTEGER NOT NULL DEFAULT (unixepoch())
         );
 
@@ -50,6 +51,7 @@ db.exec(`
                                          id              TEXT    PRIMARY KEY,
                                          tg_id           TEXT    NOT NULL,
                                          encrypted_data  TEXT    NOT NULL,
+                                         encryption_v    INTEGER NOT NULL DEFAULT 1,
                                          created_at      INTEGER NOT NULL,
                                          updated_at      INTEGER NOT NULL DEFAULT (unixepoch()),
         FOREIGN KEY (tg_id) REFERENCES users(tg_id) ON DELETE CASCADE
@@ -60,6 +62,25 @@ db.exec(`
 
 console.log('✅ Database ready:', DB_PATH);
 
+// ── Migration: Generate missing master_keys ──
+function migrateDatabase() {
+    const missing = db.prepare('SELECT * FROM users WHERE master_key IS NULL OR master_key = ""').all();
+    if (missing.length > 0) {
+        console.log(`⚠️  Migrating ${missing.length} users: generating missing master_keys...`);
+        const update = db.prepare('UPDATE users SET master_key = ? WHERE id = ?');
+        const migrate = db.transaction((users) => {
+            for (const u of users) {
+                const newKey = crypto.randomBytes(32).toString('hex');
+                update.run(newKey, u.id);
+                console.log(`   ✓ ${u.user_code} (${u.tg_id}): generated master_key`);
+            }
+        });
+        migrate(missing);
+        console.log('✅ Migration complete');
+    }
+}
+migrateDatabase();
+
 /* ── Prepared statements ── */
 const stmts = {
     getUser:    db.prepare('SELECT * FROM users WHERE tg_id = ?'),
@@ -68,15 +89,16 @@ const stmts = {
         VALUES (@tg_id, @first_name, @username, @emoji, @user_code, @master_key)
     `),
     updateUser: db.prepare(`
-        UPDATE users SET first_name=@first_name, username=@username WHERE tg_id=@tg_id
+        UPDATE users SET first_name=@first_name, username=@username, pin_hash=@pin_hash WHERE tg_id=@tg_id
     `),
     getCards:   db.prepare('SELECT * FROM cards WHERE tg_id = ? ORDER BY created_at DESC'),
     upsertCard: db.prepare(`
-        INSERT INTO cards (id, tg_id, encrypted_data, created_at, updated_at)
-        VALUES (@id, @tg_id, @encrypted_data, @created_at, @updated_at)
+        INSERT INTO cards (id, tg_id, encrypted_data, encryption_v, created_at, updated_at)
+        VALUES (@id, @tg_id, @encrypted_data, @encryption_v, @created_at, @updated_at)
             ON CONFLICT(id) DO UPDATE SET
             encrypted_data = @encrypted_data,
-                                   updated_at     = @updated_at
+                                   encryption_v = @encryption_v,
+                                   updated_at = @updated_at
     `),
     deleteCard: db.prepare('DELETE FROM cards WHERE id = ? AND tg_id = ?'),
     countCards: db.prepare('SELECT COUNT(*) as n FROM cards WHERE tg_id = ?'),
@@ -161,10 +183,12 @@ app.get('/health', (_, res) => res.json({ ok: true, ts: Date.now() }));
 
 /* POST /auth/telegram
    Body: Telegram Login Widget data { id, first_name, username, auth_date, hash, ... }
+   + OPTIONAL: pinHash (SHA-256 of PIN for verification)
    Returns: { token, user, master_key }
 */
 app.post('/auth/telegram', authLimiter, (req, res) => {
     const data = req.body;
+    const { pinHash } = data;  // Optional PIN verification
 
     if (!data?.hash || !data?.id || !data?.auth_date) {
         return res.status(400).json({ error: 'Missing auth fields' });
@@ -179,6 +203,7 @@ app.post('/auth/telegram', authLimiter, (req, res) => {
     let masterKey = null;
 
     if (!user) {
+        // New user - create with fresh master_key
         const { emoji, code } = generateUserCode();
         masterKey = generateMasterKey();
         stmts.createUser.run({
@@ -190,9 +215,23 @@ app.post('/auth/telegram', authLimiter, (req, res) => {
             master_key: masterKey,
         });
         user = stmts.getUser.get(tg_id);
+        console.log(`✅ New user: ${code} (${tg_id})`);
     } else {
-        stmts.updateUser.run({ tg_id, first_name: data.first_name || '', username: data.username || '' });
+        // Existing user
+        stmts.updateUser.run({
+            tg_id,
+            first_name: data.first_name || '',
+            username: data.username || '',
+            pin_hash: pinHash || user.pin_hash
+        });
         masterKey = user.master_key;
+
+        // Safety: if masterKey is still null (shouldn't happen after migration, but be safe)
+        if (!masterKey) {
+            masterKey = generateMasterKey();
+            db.prepare('UPDATE users SET master_key = ? WHERE tg_id = ?').run(masterKey, tg_id);
+            console.log(`⚠️  Generated missing masterKey for ${user.user_code}`);
+        }
     }
 
     const token = signToken(tg_id);
@@ -209,6 +248,12 @@ app.post('/auth/telegram', authLimiter, (req, res) => {
     });
 });
 
+/* POST /auth/refresh - Token refresh (optional, for future use) */
+app.post('/auth/refresh', authMiddleware, (req, res) => {
+    const token = signToken(req.user.tg_id);
+    res.json({ token });
+});
+
 /* GET /me */
 app.get('/me', authMiddleware, (req, res) => {
     const user = stmts.getUser.get(req.user.tg_id);
@@ -221,6 +266,7 @@ app.get('/me', authMiddleware, (req, res) => {
         username:   user.username,
         created_at: user.created_at,
         card_count: cardCount,
+        master_key: user.master_key,  // Return masterKey so client can verify
     });
 });
 
@@ -230,13 +276,14 @@ app.get('/cards', authMiddleware, apiLimiter, (req, res) => {
     res.json(rows.map(r => ({
         id:             r.id,
         encrypted_data: r.encrypted_data,
+        encryption_v:   r.encryption_v || 1,
         created_at:     r.created_at,
         updated_at:     r.updated_at,
     })));
 });
 
 /* POST /cards — upsert one or many cards
-   Body: { cards: [{ id, encrypted_data, created_at }] }
+   Body: { cards: [{ id, encrypted_data, encryption_v, created_at }] }
    Server stores ONLY encrypted blobs — never sees card data
 */
 app.post('/cards', authMiddleware, apiLimiter, (req, res) => {
@@ -256,6 +303,7 @@ app.post('/cards', authMiddleware, apiLimiter, (req, res) => {
                 id:             c.id,
                 tg_id:          req.user.tg_id,
                 encrypted_data: c.encrypted_data,
+                encryption_v:   c.encryption_v || 1,
                 created_at:     c.created_at || now,
                 updated_at:     now,
             });
@@ -362,6 +410,12 @@ async function startBotPolling() {
                 user = stmts.getUser.get(tg_id);
             } else {
                 masterKey = user.master_key;
+                // Safety check
+                if (!masterKey) {
+                    masterKey = generateMasterKey();
+                    db.prepare('UPDATE users SET master_key = ? WHERE tg_id = ?').run(masterKey, tg_id);
+                    console.log(`⚠️  Generated missing masterKey for bot ${user.user_code}`);
+                }
             }
 
             const token = signToken(tg_id);
