@@ -261,6 +261,15 @@ async function boot() {
         setupEnterPin(auth);
         go('pin-enter');
     }
+
+    console.log('[Boot] URL Params:', {
+        token: params.get('token') ? '✓' : '✗',
+        emoji: params.get('emoji'),
+        code: params.get('code'),
+        masterKey: params.get('masterKey') ? params.get('masterKey').substring(0, 10) + '...' : '✗'
+    });
+
+    console.log('[Boot] masterKeyFromBot exists?', !!masterKeyFromBot);
 }
 
 /* Welcome → Telegram bot */
